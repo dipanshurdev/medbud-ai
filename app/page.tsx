@@ -400,7 +400,7 @@ MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and whe
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">India's family medicine box safety assistant</p>
+            <p className="eyebrow">India&apos;s family medicine box safety assistant</p>
             <h1>MedBud AI</h1>
           </div>
           <div className="topActions">
@@ -439,7 +439,7 @@ MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and whe
           <div className="stack">
             <Panel id="scan" title="Inventory intake" icon={<Camera size={17} />}>
               <label className="dropzone">
-                {preview ? <img src={preview} alt="Uploaded medicine" /> : <Upload size={24} />}
+                {preview ? <img src={preview} alt="Uploaded medicine" style={{ maxHeight: "100%", width: "100%", objectFit: "cover" }} /> : <Upload size={24} />}
                 <span>{preview ? "Ready for Gemini OCR" : "Upload strip, bottle, bill, or label"}</span>
                 <input type="file" accept="image/*" onChange={handleImage} />
               </label>
