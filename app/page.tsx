@@ -71,7 +71,7 @@ type AuditItem = {
   time: string;
 };
 
-const STORAGE_KEY = "mediguard-ai-state-v2";
+const STORAGE_KEY = "medbud-ai-state-v1";
 
 const initialInventory: Medicine[] = [
   {
@@ -123,11 +123,13 @@ function monthsUntil(expiry?: string) {
   return (year - now.getFullYear()) * 12 + (month - 1 - now.getMonth());
 }
 
-function statusFor(expiry?: string): { label: string; tone: Tone } {
+function statusFor(expiry?: string, quantity?: number, schedule?: string): { label: string; tone: Tone } {
   const months = monthsUntil(expiry);
   if (months < 0) return { label: "Expired", tone: "danger" };
-  if (months <= 2) return { label: "Expiry risk", tone: "warn" };
-  return { label: "In stock", tone: "ok" };
+  if (months <= 2) return { label: "Expiring soon", tone: "warn" };
+  if ((quantity || 0) <= 3) return { label: "Low stock", tone: "warn" };
+  if (schedule?.toLowerCase().includes("rx")) return { label: "Prescription caution", tone: "warn" };
+  return { label: "Safe stock", tone: "ok" };
 }
 
 function fileToDataUrl(file: File) {
@@ -152,7 +154,7 @@ export default function Home() {
   const [inventory, setInventory] = useState<Medicine[]>(initialInventory);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [language, setLanguage] = useState<"English" | "Hinglish">("Hinglish");
-  const [scanNotes, setScanNotes] = useState("Crocin 500 strip, expiry Nov 2026, 10 tablets");
+  const [scanNotes, setScanNotes] = useState("");
   const [imageData, setImageData] = useState("");
   const [preview, setPreview] = useState("");
   const [symptoms, setSymptoms] = useState("I have fever and headache since morning. Can I use anything from home?");
@@ -183,7 +185,7 @@ export default function Home() {
   }, [inventory, profile, audit, language]);
 
   const metrics = useMemo(() => {
-    const risky = inventory.filter((item) => statusFor(item.expiry).tone !== "ok").length;
+    const risky = inventory.filter((item) => statusFor(item.expiry, item.quantity, item.schedule).tone !== "ok").length;
     const rx = inventory.filter((item) => item.schedule?.toLowerCase().includes("rx")).length;
     const lowStock = inventory.filter((item) => (item.quantity || 0) <= 3).length;
     return { risky, rx, lowStock };
@@ -204,6 +206,11 @@ export default function Home() {
   async function scanMedicine() {
     setError("");
     setScanBusy(true);
+
+    if(!scanNotes.length && !imageData) {
+return setError("Please provide either an image or notes for scanning.");
+    }
+    
     try {
       const response = await fetch("/api/scan", {
         method: "POST",
@@ -263,43 +270,120 @@ export default function Home() {
     setInventory(initialInventory);
     setProfile(initialProfile);
     setConsult(null);
+    setImageData("")
+    setPreview("")
     setAudit([{ id: `audit-${Date.now()}`, kind: "system", title: "Workspace reset", time: nowLabel() }]);
     localStorage.removeItem(STORAGE_KEY);
   }
 
-  const summary = `MediGuard AI Safety Report
+  function loadSampleData() {
+    const sampleInventory: Medicine[] = [
+      {
+        id: "med-sample-1",
+        name: "Paracetamol",
+        activeIngredient: "Paracetamol",
+        strength: "500 mg",
+        form: "Tablet",
+        manufacturer: "Home stock",
+        expiry: "2026-11",
+        batch: "A1",
+        quantity: 10,
+        schedule: "OTC",
+        confidence: 92,
+        storage: "Cool dry place",
+        cautions: ["Avoid duplicate paracetamol products.", "Check liver risk and alcohol use before taking."]
+      },
+      {
+        id: "med-sample-2",
+        name: "Cetirizine",
+        activeIngredient: "Cetirizine",
+        strength: "10 mg",
+        form: "Tablet",
+        manufacturer: "Home stock",
+        expiry: "2025-06",
+        batch: "B4",
+        quantity: 4,
+        schedule: "OTC",
+        confidence: 88,
+        storage: "Cool dry place",
+        cautions: ["May cause drowsiness.", "Avoid driving if sleepy."]
+      },
+      {
+        id: "med-sample-3",
+        name: "Amoxicillin",
+        activeIngredient: "Amoxicillin",
+        strength: "250 mg",
+        form: "Capsule",
+        manufacturer: "Home stock",
+        expiry: "2024-12",
+        batch: "C2",
+        quantity: 6,
+        schedule: "Rx",
+        confidence: 85,
+        storage: "Cool dry place",
+        cautions: ["Complete full course as prescribed.", "Do not share antibiotics."]
+      },
+      {
+        id: "med-sample-4",
+        name: "Omeprazole",
+        activeIngredient: "Omeprazole",
+        strength: "20 mg",
+        form: "Capsule",
+        manufacturer: "Home stock",
+        expiry: "2027-03",
+        batch: "D1",
+        quantity: 2,
+        schedule: "OTC",
+        confidence: 90,
+        storage: "Cool dry place",
+        cautions: ["Take before meals.", "Long-term use requires doctor supervision."]
+      }
+    ];
+    setInventory(sampleInventory);
+    pushAudit("sample", "Loaded sample family cabinet data");
+  }
+
+  const summary = `MedBud AI Safety Report
 
 Generated: ${nowLabel()}
-Profile: ${profile.name}, ${profile.age}, ${profile.weight}
+
+PATIENT PROFILE
+Name: ${profile.name}
+Age: ${profile.age}
+Weight: ${profile.weight}
 Allergies: ${profile.allergies}
 Conditions: ${profile.conditions}
 Current medicines: ${profile.currentMeds}
 
-User concern:
+SYMPTOMS
 ${symptoms}
 
-Triage:
+INVENTORY CHECKED
+${inventory.map((item) => `- ${item.name} ${item.strength || ""} | ${statusFor(item.expiry, item.quantity, item.schedule).label} | Expiry ${item.expiry || "unknown"} | Qty ${item.quantity || 0}`).join("\n")}
+
+TRIAGE
 ${consult ? `${consult.triage.toUpperCase()} / ${consult.riskLevel.toUpperCase()}` : "Not generated yet"}
+${consult ? consult.summary : ""}
 
-Inventory:
-${inventory.map((item) => `- ${item.name} ${item.strength || ""} | ${statusFor(item.expiry).label} | Expiry ${item.expiry || "unknown"} | Qty ${item.quantity || 0}`).join("\n")}
-
-Guidance:
-${consult ? consult.safeGuidance.map((item) => `- ${item}`).join("\n") : "Run the safety agent."}
-
-Avoid:
+RISKS FOUND
 ${consult ? consult.avoid.map((item) => `- ${item}`).join("\n") : "Run the safety agent."}
 
-Red flags:
+RED FLAGS
 ${consult ? consult.redFlags.map((item) => `- ${item}`).join("\n") : "Run the safety agent."}
 
-Disclaimer:
-This is AI-generated information for reference only. It is not medical advice. Always consult a licensed doctor.`;
+SUGGESTED NEXT STEP
+${consult ? consult.safeGuidance.map((item) => `- ${item}`).join("\n") : "Run the safety agent."}
+
+DOCTOR CONSULTATION WARNING
+${consult?.triage === "urgent" ? "URGENT: Consult a doctor immediately." : consult?.triage === "doctor" ? "RECOMMENDED: Consult a doctor for proper diagnosis." : "Monitor symptoms. Consult doctor if condition worsens."}
+
+DISCLAIMER
+MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and when to consult a doctor. This is AI-generated information for reference only. It is not medical advice. Always consult a licensed doctor.`;
 
   return (
     <main className="appShell">
       <aside className="sidebar">
-        <div className="mark"><Shield size={18} /> MediGuard AI</div>
+        <div className="mark"><Shield size={18} /> MedBud AI</div>
         <nav>
           <a href="#scan">Scan</a>
           <a href="#inventory">Inventory</a>
@@ -309,16 +393,18 @@ This is AI-generated information for reference only. It is not medical advice. A
         <div className="sidebarMeta">
           <span>Model</span>
           <strong>Gemini 2.5 Flash</strong>
+          <span className="metaLabel">Built for Indian homes</span>
         </div>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Safety-first home pharmacy agent</p>
-            <h1>MediGuard AI</h1>
+            <p className="eyebrow">India's family medicine box safety assistant</p>
+            <h1>MedBud AI</h1>
           </div>
           <div className="topActions">
+            <button className="ghost" onClick={loadSampleData}><PackagePlus size={15} /> Load Sample Family Cabinet</button>
             <button className="ghost" onClick={resetWorkspace}><RotateCcw size={15} /> Reset</button>
             <button className="ghost" onClick={() => navigator.clipboard.writeText(summary)}><Clipboard size={15} /> Copy report</button>
             <button onClick={() => window.print()}><Download size={15} /> Save PDF</button>
@@ -327,7 +413,17 @@ This is AI-generated information for reference only. It is not medical advice. A
 
         <section className="disclaimer">
           <AlertTriangle size={16} />
-          <span>This is AI-generated information for reference only. It is not medical advice. Always consult a licensed doctor.</span>
+          <span>MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and when to consult a doctor.</span>
+        </section>
+
+        <section className="demoFlow">
+          <span className="flowStep">1. Scan medicine</span>
+          <span className="flowArrow">→</span>
+          <span className="flowStep">2. Build inventory</span>
+          <span className="flowArrow">→</span>
+          <span className="flowStep">3. Ask symptom</span>
+          <span className="flowArrow">→</span>
+          <span className="flowStep">4. Get safety report</span>
         </section>
 
         {error ? <section className="error"><AlertTriangle size={16} /> {error}</section> : null}
@@ -349,10 +445,10 @@ This is AI-generated information for reference only. It is not medical advice. A
               </label>
               <label className="field">
                 <span>Notes</span>
-                <textarea value={scanNotes} onChange={(event) => setScanNotes(event.target.value)} />
+                <textarea placeholder="Crocin 500 strip, expiry Nov 2026, 10 tablets" value={scanNotes} onChange={(event) => setScanNotes(event.target.value)} />
               </label>
               <div className="buttonRow">
-                <button onClick={scanMedicine} disabled={scanBusy}>
+                <button onClick={scanMedicine} disabled={scanBusy || scanNotes.length === 0 && !imageData}>
                   {scanBusy ? <Loader2 className="spin" size={15} /> : <Bot size={15} />}
                   Gemini scan
                 </button>
@@ -381,7 +477,7 @@ This is AI-generated information for reference only. It is not medical advice. A
           <Panel id="inventory" title="Live inventory" icon={<Archive size={17} />} className="inventoryPanel">
             <div className="inventoryList">
               {inventory.map((item) => {
-                const status = statusFor(item.expiry);
+                const status = statusFor(item.expiry, item.quantity, item.schedule);
                 return (
                   <article className="medRow" key={item.id}>
                     <div className="medMain">
@@ -393,7 +489,7 @@ This is AI-generated information for reference only. It is not medical advice. A
                       <span>EXP {item.expiry || "unknown"}</span>
                       <span>QTY {item.quantity || 0}</span>
                       <span>{item.schedule || "Unknown"}</span>
-                      <span>{item.confidence || 0}% confidence</span>
+                      <span className="confidenceScore">Gemini extraction confidence: {item.confidence || 0}%</span>
                     </div>
                     <p className="medCaution">{item.cautions?.[0] || "Verify label before use."}</p>
                     <button
@@ -429,17 +525,27 @@ This is AI-generated information for reference only. It is not medical advice. A
                   <strong>{consult.triage}</strong>
                   <p>{consult.summary}</p>
                 </div>
+                <ResultBlock title="Red flags" items={consult.redFlags} />
                 <ResultBlock title="Follow-up questions" items={consult.followUpQuestions} />
                 <ResultBlock title="Inventory matches" items={consult.inventoryMatches.map((item) => `${item.name}: ${item.status} - ${item.reason}`)} />
                 <ResultBlock title="Safe guidance" items={consult.safeGuidance} />
                 <ResultBlock title="Avoid" items={consult.avoid} />
-                <ResultBlock title="Red flags" items={consult.redFlags} />
                 <ResultBlock title="Restock queue" items={consult.restockSuggestions} />
+                <div className="aiReasoning">
+                  <h3>AI Safety Reasoning</h3>
+                  <ul>
+                    <li>✓ Checked expiry dates against current date</li>
+                    <li>✓ Checked allergy profile against active ingredients</li>
+                    <li>✓ Checked for duplicate ingredient conflicts</li>
+                    <li>✓ Checked red flag symptoms (chest pain, breathing issues, pregnancy, severe allergy, high fever, overdose)</li>
+                    <li>✓ Evaluated doctor referral need based on risk level</li>
+                  </ul>
+                </div>
               </div>
             ) : (
               <div className="emptyState">
                 <Bot size={20} />
-                <p>Run a safety check to get triage, inventory checks, red flags, and restock suggestions from Gemini.</p>
+                <p>Run a safety check to get triage, inventory checks, red flags, and restock suggestions from Gemini. Supports Hinglish for natural conversations.</p>
               </div>
             )}
           </Panel>

@@ -63,11 +63,11 @@ export async function POST(request: Request) {
             role: "user",
             parts: [
               {
-                text: `You are MediGuard AI, a safety-first home pharmacy agent for Indian families.
+                text: `You are MedBud AI, a safety-first home pharmacy agent for Indian families.
 
 Return only JSON with this exact shape:
 {
-  "disclaimer": "This is AI-generated information for reference only. It is not medical advice. Always consult a licensed doctor.",
+  "disclaimer": "MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and when to consult a doctor.",
   "triage": "self-care | doctor | urgent",
   "riskLevel": "low | medium | high",
   "followUpQuestions": ["..."],
