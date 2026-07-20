@@ -383,7 +383,10 @@ MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and whe
   return (
     <main className="appShell">
       <aside className="sidebar">
-        <div className="mark"><Shield size={18} /> MedBud AI</div>
+        <div className="mark">
+          <img src="/logo.svg" alt="MedBud AI logo" className="brandLogo" />
+          <span>MedBud AI</span>
+        </div>
         <nav>
           <a href="#scan">Scan</a>
           <a href="#inventory">Inventory</a>
@@ -399,9 +402,12 @@ MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and whe
 
       <section className="workspace">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">India&apos;s family medicine box safety assistant</p>
-            <h1>MedBud AI</h1>
+          <div className="heroBrand">
+            {/* <img src="/logo.svg" alt="MedBud AI logo" className="heroLogo" /> */}
+            <div>
+              <p className="eyebrow">India&apos;s family medicine box safety assistant</p>
+              <h1>MedBud AI</h1>
+            </div>
           </div>
           <div className="topActions">
             <button className="ghost" onClick={loadSampleData}><PackagePlus size={15} /> Load Sample Family Cabinet</button>
