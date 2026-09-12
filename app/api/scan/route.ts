@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
-type ScanRequest = {
-  image?: string;
-  notes?: string;
-};
+import { scanMedicineSchema } from "@/lib/validations/medicine";
+import { SCAN_PROMPT } from "@/lib/prompts/v1/consult";
+
+type ScanRequest = z.infer<typeof scanMedicineSchema>;
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"].filter((model) => model !== DEFAULT_MODEL);
@@ -25,7 +26,12 @@ function jsonFromText(text: string) {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as ScanRequest;
+  const rawBody = await request.json();
+  const parsed = scanMedicineSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Validation failed", details: parsed.error.format() }, { status: 400 });
+  }
+  const body = parsed.data;
   const apiKey = process.env.GEMINI_API_KEY;
   const image = parseDataUrl(body.image);
 
@@ -37,10 +43,7 @@ export async function POST(request: Request) {
   }
 
   const parts: Array<Record<string, unknown>> = [
-    {
-      text:
-        "Extract medicine package details for a home inventory product. Return only JSON with this exact shape: {\"name\":\"\",\"activeIngredient\":\"\",\"strength\":\"\",\"form\":\"\",\"manufacturer\":\"\",\"expiry\":\"YYYY-MM or unknown\",\"batch\":\"\",\"quantity\":number,\"schedule\":\"OTC/Rx/Unknown\",\"confidence\":0-100,\"storage\":\"\",\"cautions\":[\"\"],\"redFlags\":[\"\"]}. This is inventory extraction only, not medical advice. If uncertain, use unknown and lower confidence."
-    }
+    { text: SCAN_PROMPT }
   ];
 
   if (image) {

@@ -1,28 +1,10 @@
 import { NextResponse } from "next/server";
 
-type Medicine = {
-  name: string;
-  activeIngredient?: string;
-  strength?: string;
-  expiry?: string;
-  quantity?: number;
-  schedule?: string;
-  cautions?: string[];
-};
+import { z } from "zod";
+import { consultSchema } from "@/lib/validations/medicine";
+import { CONSULT_PROMPT_TEMPLATE } from "@/lib/prompts/v1/consult";
 
-type ConsultRequest = {
-  message: string;
-  profile: {
-    name: string;
-    age: string;
-    weight: string;
-    allergies: string;
-    conditions: string;
-    currentMeds: string;
-  };
-  inventory: Medicine[];
-  language: "English" | "Hinglish";
-};
+type ConsultRequest = z.infer<typeof consultSchema>;
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"].filter((model) => model !== DEFAULT_MODEL);
@@ -37,7 +19,12 @@ function jsonFromText(text: string) {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as ConsultRequest;
+  const rawBody = await request.json();
+  const parsed = consultSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Validation failed", details: parsed.error.format() }, { status: 400 });
+  }
+  const body = parsed.data;
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -63,37 +50,13 @@ export async function POST(request: Request) {
             role: "user",
             parts: [
               {
-                text: `You are MedBud AI, a safety-first home pharmacy agent for Indian families.
-
-Return only JSON with this exact shape:
-{
-  "disclaimer": "MedBud AI does not prescribe. It helps detect risk, expiry, duplication, and when to consult a doctor.",
-  "triage": "self-care | doctor | urgent",
-  "riskLevel": "low | medium | high",
-  "followUpQuestions": ["..."],
-  "inventoryMatches": [{"name":"","status":"usable | expired | caution | not recommended","reason":""}],
-  "safeGuidance": ["..."],
-  "avoid": ["..."],
-  "redFlags": ["..."],
-  "restockSuggestions": ["..."],
-  "summary": "..."
-}
-
-Rules:
-- Never diagnose.
-- Never claim to be a doctor.
-- Never give exact prescription dosage.
-- For OTC medicine, say to follow package label or a clinician's prior advice.
-- If symptoms include red flags, pregnancy, infant/elderly risk, overdose, severe allergy, chest pain, breathing issue, neuro symptoms, severe dehydration, or severe pain, triage must be urgent.
-- Check expiry, allergies, chronic conditions, current meds, duplicate active ingredients, and Rx-only status.
-- Use ${body.language}. Keep it concise, practical, and culturally natural for India.
-
-User payload:
-${JSON.stringify({
-  message: body.message,
-  profile: body.profile,
-  inventory: body.inventory
-})}`
+                text: CONSULT_PROMPT_TEMPLATE
+                  .replace("{{LANGUAGE}}", body.language)
+                  .replace("{{PAYLOAD}}", JSON.stringify({
+                    message: body.message,
+                    profile: body.profile,
+                    inventory: body.inventory
+                  }))
               }
             ]
           }
